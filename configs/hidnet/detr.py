@@ -1,5 +1,7 @@
+from configs._base_.default_runtime import load_from
+
 _base_ = [
-    '../_base_/datasets/coco_detection.py', '../_base_/default_runtime.py'
+    '../_base_/default_runtime.py'
 ]
 model = dict(
     type='DETR',
@@ -7,7 +9,7 @@ model = dict(
         type='ResNet',
         depth=50,
         num_stages=4,
-        out_indices=(3, ),
+        out_indices=(3,),
         frozen_stages=1,
         norm_cfg=dict(type='BN', requires_grad=False),
         norm_eval=True,
@@ -15,7 +17,7 @@ model = dict(
         init_cfg=dict(type='Pretrained', checkpoint='torchvision://resnet50')),
     bbox_head=dict(
         type='DETRHead',
-        num_classes=80,
+        num_classes=1,
         in_channels=2048,
         transformer=dict(
             type='Transformer',
@@ -68,11 +70,15 @@ model = dict(
             reg_cost=dict(type='BBoxL1Cost', weight=5.0, box_format='xywh'),
             iou_cost=dict(type='IoUCost', iou_mode='giou', weight=2.0))),
     test_cfg=dict(max_per_img=100))
+
+# dataset settings
+dataset_type = 'CocoDataset'
+classes = ('person',)
+data_root = 'data/BIT/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 # train_pipeline, NOTE the img_scale and the Pad's size_divisor is different
 # from the default setting in mmdet.
-
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -82,33 +88,32 @@ train_pipeline = [
         policies=[[
             dict(
                 type='Resize',
-                img_scale=[(480, 1333), (512, 1333), (544, 1333), (576, 1333),
-                           (608, 1333), (640, 1333), (672, 1333), (704, 1333),
-                           (736, 1333), (768, 1333), (800, 1333)],
+                img_scale=[(210, 512), (240, 512), (270, 512), (300, 512), (330, 512),
+                           (360, 512), (390, 512), (420, 512), (450, 512),
+                           (480, 512), (510, 512), ],
                 multiscale_mode='value',
                 keep_ratio=True)
         ],
-                  [
-                      dict(
-                          type='Resize',
-                          img_scale=[(400, 1333), (500, 1333), (600, 1333)],
-                          multiscale_mode='value',
-                          keep_ratio=True),
-                      dict(
-                          type='RandomCrop',
-                          crop_type='absolute_range',
-                          crop_size=(384, 600),
-                          allow_negative_crop=True),
-                      dict(
-                          type='Resize',
-                          img_scale=[(480, 1333), (512, 1333), (544, 1333),
-                                     (576, 1333), (608, 1333), (640, 1333),
-                                     (672, 1333), (704, 1333), (736, 1333),
-                                     (768, 1333), (800, 1333)],
-                          multiscale_mode='value',
-                          override=True,
-                          keep_ratio=True)
-                  ]]),
+            [
+                dict(
+                    type='Resize',
+                    img_scale=[(200, 512), (300, 512), (400, 512)],
+                    multiscale_mode='value',
+                    keep_ratio=True),
+                dict(
+                    type='RandomCrop',
+                    crop_type='absolute_range',
+                    crop_size=(384, 600),
+                    allow_negative_crop=True),
+                dict(
+                    type='Resize',
+                    img_scale=[(210, 512), (240, 512), (270, 512), (300, 512), (330, 512),
+                               (360, 512), (390, 512), (420, 512), (450, 512),
+                               (480, 512), (510, 512), ],
+                    multiscale_mode='value',
+                    override=True,
+                    keep_ratio=True)
+            ]]),
     dict(type='Normalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=1),
     dict(type='DefaultFormatBundle'),
@@ -121,7 +126,7 @@ test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(1333, 800),
+        img_scale=(512, 800),
         flip=False,
         transforms=[
             dict(type='Resize', keep_ratio=True),
@@ -133,11 +138,27 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
-    train=dict(pipeline=train_pipeline),
-    val=dict(pipeline=test_pipeline),
-    test=dict(pipeline=test_pipeline))
+    samples_per_gpu=16,
+    workers_per_gpu=16,
+    train=dict(
+        type=dataset_type,
+        classes=classes,
+        ann_file=data_root + 'bit_coco.json',
+        img_prefix=data_root + 'Bit-frames/',
+        pipeline=train_pipeline),
+    val=dict(
+        type=dataset_type,
+        classes=classes,
+        ann_file=data_root + 'bit_coco.json',
+        img_prefix=data_root + 'Bit-frames/',
+        pipeline=test_pipeline),
+    test=dict(
+        type=dataset_type,
+        classes=classes,
+        ann_file=data_root + 'bit_coco.json',
+        img_prefix=data_root + 'Bit-frames/',
+        pipeline=test_pipeline))
+evaluation = dict(interval=10, metric='bbox')
 # optimizer
 optimizer = dict(
     type='AdamW',
@@ -149,36 +170,10 @@ optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 # learning policy
 lr_config = dict(policy='step', step=[100])
 runner = dict(type='EpochBasedRunner', max_epochs=150)
-
-
-# dataset settings
-dataset_type = 'CocoDataset'
-data_root = 'data/coco/'
-img_norm_cfg = dict(
-    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
-train_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(type='LoadAnnotations', with_bbox=True),
-    dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
-    dict(type='RandomFlip', flip_ratio=0.5),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size_divisor=32),
-    dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
-]
-test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(
-        type='MultiScaleFlipAug',
-        img_scale=(1333, 800),
-        flip=False,
-        transforms=[
-            dict(type='Resize', keep_ratio=True),
-            dict(type='RandomFlip'),
-            dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size_divisor=32),
-            dict(type='ImageToTensor', keys=['img']),
-            dict(type='Collect', keys=['img']),
-        ])
-]
-
+load_from = './checkpoints/detr_r50_8x2_150e_coco_20201130_194835-2c4b8974.pth'
+log_config = dict(
+    interval=50,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
